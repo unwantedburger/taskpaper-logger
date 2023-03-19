@@ -1,46 +1,21 @@
-const fs = require("fs-extra");
-const cron = require("node-cron");
-const readline = require("readline");
+const fs = require("fs/promises");
+const axios = require("axios");
+const AWS = require("aws-sdk");
 
-const CONFIG_FILE_NAME = "config.json";
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
+// Configure AWS SDK using environment variables
+AWS.config.update({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
 });
 
-function askQuestion(query) {
-  return new Promise((resolve) => {
-    rl.question(query, resolve);
-  });
-}
+const s3 = new AWS.S3();
 
-// Configuration wizard
-async function configurationWizard() {
-  const targetFile = await askQuestion(
-    "Please enter the path to the TaskPaper file: "
-  );
-  const destinationFile = await askQuestion(
-    "Please enter the path to the destination file: "
-  );
-
-  const config = {
-    targetFile,
-    destinationFile,
-  };
-
-  await fs.writeJson(CONFIG_FILE_NAME, config);
-  rl.close();
-}
-
-// Read TaskPaper document and count tasks and projects
-async function readTaskPaperFile(filePath) {
-  const content = await fs.readFile(filePath, "utf-8");
+async function readTaskPaperFile(fileUrl) {
+  const response = await axios.get(fileUrl);
+  const content = response.data;
   const lines = content.split("\n");
 
-  let date = new Date().toISOString().slice(2, 16);
-  // .replace("T", "_")
-  // .replace(":", ":");
+  let date = new Date().toISOString().slice(0, 16).replace("T", "-");
 
   let tasks = 0;
   let projects = 0;
@@ -60,43 +35,37 @@ async function readTaskPaperFile(filePath) {
   return { date, tasks, projects, done };
 }
 
-// Log task and project counts to a file as a JSON object
-async function logTaskProjectCounts(destinationFile, data) {
-  const jsonData = JSON.stringify(data);
-  await fs.appendFile(destinationFile, jsonData + ",\n", "utf-8");
-}
+async function logTaskProjectCounts(data) {
+  const params = {
+    Bucket: "funbucket-57",
+    Key: "destination.json",
+  };
 
-// Main function to execute the scheduled task
-async function main() {
-  const config = await fs.readJson(CONFIG_FILE_NAME);
-  const { targetFile, destinationFile } = config;
-
-  const taskProjectCounts = await readTaskPaperFile(targetFile);
-  await logTaskProjectCounts(destinationFile, taskProjectCounts);
-}
-
-// ...
-
-// If the configuration file does not exist, run the configuration wizard
-fs.pathExists(CONFIG_FILE_NAME)
-  .then((exists) => {
-    if (!exists) {
-      return configurationWizard();
+  // Get the existing records
+  let records;
+  try {
+    const response = await s3.getObject(params).promise();
+    records = JSON.parse(response.Body.toString());
+  } catch (error) {
+    if (error.code === "NoSuchKey") {
+      records = [];
+    } else {
+      throw error;
     }
-  })
-  .then(() => {
-    // Run the main function directly to log tasks and projects immediately
-    main();
-  });
+  }
 
-// // If the configuration file does not exist, run the configuration wizard
-// fs.pathExists(CONFIG_FILE_NAME)
-//   .then((exists) => {
-//     if (!exists) {
-//       return configurationWizard();
-//     }
-//   })
-//   .then(() => {
-//     // Schedule the main function to run every 24 hours
-//     cron.schedule("0 0 * * *", main);
-//   });
+  // Add the new record
+  records.push(data);
+
+  // Save the updated records to S3
+  params.Body = JSON.stringify(records);
+  await s3.putObject(params).promise();
+}
+
+async function main() {
+  const taskPaperUrl = process.env.TASKPAPER_URL;
+  const data = await readTaskPaperFile(taskPaperUrl);
+  await logTaskProjectCounts(data);
+}
+
+module.exports = { main, s3 };

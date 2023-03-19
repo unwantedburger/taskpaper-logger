@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/api/.*", "dest": "/api/index.js" },
+    { "status": 404, "src": "/.*", "dest": "404.html" }
+  ],
+  "env": {
+    "TASKPAPER_URL": "${TASKPAPER_URL}"
+  }
+}
