@@ -1,9 +1,12 @@
-const express = require("express");
-const app = express();
-const port = process.env.PORT || 3001;
-const main = require("../index").main;
 const fs = require("fs/promises");
+const axios = require("axios");
+const express = require("express");
+const cron = require("node-cron");
+const { readTaskPaperFile, logTaskProjectCounts } = require("./../index");
 const config = require("./../config");
+
+const app = express();
+const port = 3005;
 
 app.use(express.json());
 
@@ -29,4 +32,16 @@ app.post("/api/trigger", async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+});
+
+async function main() {
+  const taskPaperUrl = config.TASKPAPER_URL;
+  const data = await readTaskPaperFile(taskPaperUrl);
+  await logTaskProjectCounts(data);
+}
+
+// Schedule the cron job (runs every day at midnight)
+cron.schedule("0 0 * * *", async () => {
+  console.log("Cron job triggered");
+  await main();
 });

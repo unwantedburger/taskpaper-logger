@@ -1,9 +1,17 @@
 const fs = require("fs/promises");
 const axios = require("axios");
-const config = require("./config.js");
+const config = require("./config");
 
 async function readTaskPaperFile(fileUrl) {
-  const content = await fs.readFile(fileUrl, "utf-8");
+  let content;
+
+  if (fileUrl.startsWith("http")) {
+    const response = await axios.get(fileUrl);
+    content = response.data;
+  } else {
+    content = await fs.readFile(fileUrl, "utf-8");
+  }
+
   const lines = content.split("\n");
 
   let date = new Date().toISOString().slice(0, 16).replace("T", "-");
@@ -27,13 +35,12 @@ async function readTaskPaperFile(fileUrl) {
 }
 
 async function logTaskProjectCounts(data) {
-  const destinationFile = "destination.json";
+  const destination = config.DESTINATION_JSON;
 
-  // Get the existing records
   let records;
   try {
-    const response = await fs.readFile(destinationFile, "utf-8");
-    records = JSON.parse(response);
+    const fileContent = await fs.readFile(destination, "utf-8");
+    records = JSON.parse(fileContent);
   } catch (error) {
     if (error.code === "ENOENT") {
       records = [];
@@ -42,11 +49,9 @@ async function logTaskProjectCounts(data) {
     }
   }
 
-  // Add the new record
   records.push(data);
 
-  // Save the updated records to the local file
-  await fs.writeFile(destinationFile, JSON.stringify(records, null, 2));
+  await fs.writeFile(destination, JSON.stringify(records, null, 2));
 }
 
 async function main() {
@@ -55,4 +60,4 @@ async function main() {
   await logTaskProjectCounts(data);
 }
 
-module.exports = { main };
+module.exports = { readTaskPaperFile, logTaskProjectCounts };
