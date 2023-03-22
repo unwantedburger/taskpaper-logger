@@ -1,6 +1,7 @@
 const fs = require("fs/promises");
 const axios = require("axios");
 const config = require("./config");
+const { createFire } = require("./lib/firestarter");
 
 async function readTaskPaperFile(fileUrl) {
   let content;
@@ -26,13 +27,13 @@ async function readTaskPaperFile(fileUrl) {
     unprioritised: 0,
     done: 0,
   };
-  let done = 0;
   let projects = 0;
 
   const valueStrings = ["@critical", "@high", "@mid", "@low"];
 
   lines.forEach((line) => {
     const trimmedLine = line.trimStart();
+
     if (trimmedLine.endsWith(":")) {
       projects++;
       return;
@@ -42,7 +43,6 @@ async function readTaskPaperFile(fileUrl) {
       tasks.total++;
 
       // If it contains @done write to done and move on
-
       if (trimmedLine.includes("@done")) {
         tasks.done++;
         return;
@@ -53,10 +53,8 @@ async function readTaskPaperFile(fileUrl) {
       for (let i = 0; i < valueStrings.length; i++) {
         // If the current valuestring is included in the task.
         if (trimmedLine.includes(valueStrings[i])) {
-          console.log(trimmedLine);
           // Log it and break the loop.
 
-          console.log(valueStrings[i].slice(1));
           tasks[valueStrings[i].slice(1)]++;
           categorized = true;
           break;
@@ -75,17 +73,13 @@ async function readTaskPaperFile(fileUrl) {
       } else {
         if (!categorized) {
           // If it's not part of the array, log it as unlabelled
-
           tasks.unprioritised++;
           return null;
         }
       }
     }
   });
-  console.log({ tasks, projects });
-
   checkSum(tasks);
-
   return { date, tasks, projects };
 }
 
@@ -99,7 +93,6 @@ function checkSum(tasks) {
     sum += taskValues[key];
   }
 
-  console.log({ sum, total });
   // Compare with total
   if (sum === total) {
     console.log("Sum is equal to total.");
@@ -109,23 +102,25 @@ function checkSum(tasks) {
 }
 
 async function logTaskProjectCounts(data) {
-  const destination = config.DESTINATION_JSON;
+  // const destination = config.DESTINATION_JSON;
 
-  let records;
+  // let records;
   try {
-    const fileContent = await fs.readFile(destination, "utf-8");
-    records = JSON.parse(fileContent);
+    // const fileContent = await fs.readFile(destination, "utf-8");
+    // records = JSON.parse(fileContent);
+    await createFire(data);
+    console.log("You're done!");
   } catch (error) {
     if (error.code === "ENOENT") {
       records = [];
     } else {
+      console.log("Error block triggered");
+      console.log({ error });
       throw error;
     }
   }
 
-  records.push(data);
-
-  await fs.writeFile(destination, JSON.stringify(records, null, 2));
+  // await fs.writeFile(destination, JSON.stringify(records, null, 2));
 }
 
 async function main() {
