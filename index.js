@@ -42,7 +42,7 @@ async function main() {
 }
 
 // Schedule the cron job (runs every day at midnight)
-cron.schedule("0 0 * * *", async () => {
+cron.schedule("30 18 * * *", async () => {
   console.log("Cron job triggered");
   await main();
 });
