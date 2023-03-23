@@ -1,128 +1,39 @@
 const fs = require("fs/promises");
 const axios = require("axios");
+const express = require("express");
+const cron = require("node-cron");
+const { readTaskPaperFile, logTaskProjectCounts } = require("./lib/functions");
+// const config = require("./config");
 const config = require("./config");
-const { createFire } = require("./lib/firestarter");
 
-async function readTaskPaperFile(fileUrl) {
-  let content;
+const app = express();
+const port = 3005;
 
-  if (fileUrl.startsWith("http")) {
-    const response = await axios.get(fileUrl);
-    content = response.data;
-  } else {
-    content = await fs.readFile(fileUrl, "utf-8");
-  }
+app.use(express.json());
 
-  const lines = content.split("\n");
-
-  let date = new Date().toISOString().slice(0, 16).replace("T", "-");
-
-  let tasks = {
-    total: 0,
-    critical: 0,
-    high: 0,
-    mid: 0,
-    low: 0,
-    evokedset: 0,
-    unprioritised: 0,
-    done: 0,
-  };
-  let projects = 0;
-
-  const valueStrings = ["@critical", "@high", "@mid", "@low"];
-
-  lines.forEach((line) => {
-    const trimmedLine = line.trimStart();
-
-    if (trimmedLine.endsWith(":")) {
-      projects++;
-      return;
-    } else if (trimmedLine.startsWith("-")) {
-      // These are all the tasks.
-
-      // If it contains @done write to done and move on
-      if (trimmedLine.includes("@done")) {
-        tasks.done++;
-        return;
-      } else {
-        // Total should not include completed tasks.
-        tasks.total++;
-      }
-
-      // Loop through then valueStrings
-      let categorized = false;
-      for (let i = 0; i < valueStrings.length; i++) {
-        // If the current valuestring is included in the task.
-        if (trimmedLine.includes(valueStrings[i])) {
-          // Log it and break the loop.
-
-          tasks[valueStrings[i].slice(1)]++;
-          categorized = true;
-          break;
-        }
-      }
-      // If it contains evokedset pris stick it in evokedest
-      if (
-        trimmedLine.includes("@e1") ||
-        trimmedLine.includes("@e2") ||
-        trimmedLine.includes("@e3")
-      ) {
-        // console.log("yas");
-        tasks.evokedset++;
-        categorized = true;
-        return;
-      } else {
-        if (!categorized) {
-          // If it's not part of the array, log it as unlabelled
-          tasks.unprioritised++;
-          return null;
-        }
-      }
-    }
-  });
-  checkSum(tasks);
-  return { date, tasks, projects };
-}
-
-function checkSum(tasks) {
-  // Remove the total from the object.
-  const { total, ...taskValues } = tasks;
-
-  // Iterate over and sum them up
-  let sum = 0;
-  for (let key in taskValues) {
-    sum += taskValues[key];
-  }
-
-  // Compare with total
-  if (sum === total) {
-    console.log("Sum is equal to total.");
-  } else {
-    console.log("Sum is not equal to total.");
-  }
-}
-
-async function logTaskProjectCounts(data) {
-  // const destination = config.DESTINATION_JSON;
-
-  // let records;
+app.get("/api/records", async (req, res) => {
   try {
-    // const fileContent = await fs.readFile(destination, "utf-8");
-    // records = JSON.parse(fileContent);
-    await createFire(data);
-    console.log("You're done!");
+    const data = await fs.readFile(config.DESTINATION_JSON, "utf-8");
+    res.json(JSON.parse(data));
   } catch (error) {
-    if (error.code === "ENOENT") {
-      records = [];
-    } else {
-      console.log("Error block triggered");
-      console.log({ error });
-      throw error;
-    }
+    res.status(500).json({ error: error.message });
   }
+});
 
-  // await fs.writeFile(destination, JSON.stringify(records, null, 2));
-}
+app.post("/api/trigger", async (req, res) => {
+  try {
+    await main();
+    res
+      .status(200)
+      .json({ message: "TaskPaper logging triggered successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});
 
 async function main() {
   const taskPaperUrl = config.TASKPAPER_URL;
@@ -130,4 +41,8 @@ async function main() {
   await logTaskProjectCounts(data);
 }
 
-module.exports = { readTaskPaperFile, logTaskProjectCounts };
+// Schedule the cron job (runs every day at midnight)
+cron.schedule("0 0 * * *", async () => {
+  console.log("Cron job triggered");
+  await main();
+});
