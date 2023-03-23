@@ -40,12 +40,13 @@ async function readTaskPaperFile(fileUrl) {
     } else if (trimmedLine.startsWith("-")) {
       // These are all the tasks.
 
-      tasks.total++;
-
       // If it contains @done write to done and move on
       if (trimmedLine.includes("@done")) {
         tasks.done++;
         return;
+      } else {
+        // Total should not include completed tasks.
+        tasks.total++;
       }
 
       // Loop through then valueStrings
